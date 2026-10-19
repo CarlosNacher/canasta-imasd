@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Importar la pizarra · Canasta de I+D</title>
+<link rel="icon" type="image/png" href="img/favicon-64.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+  .imp .cell { cursor: default; }
+  .grid td.we, .grid th.we { background: var(--bg); }
+  .warn { color: var(--miss); font-weight: 600; }
+  .grid td.flag { box-shadow: inset 0 0 0 2px var(--miss); }
+  select { border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: .35rem .5rem; }
+</style>
+</head>
+<body>
+<header class="top"><div class="brand"><img class="logo" src="img/icon-512.png" alt="" width="34" height="34">Importar la pizarra</div>
+  <a class="btn ghost small" href="./" style="color:var(--bar-ink);text-decoration:none">Volver a la web</a></header>
+<main class="main imp" id="out"><p class="muted">Cargando…</p></main>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, doc, getDoc, getDocs, collection, query, where, writeBatch, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { firebaseConfig } from "./js/firebase-config.js";
+
+// ===================== DATOS DE LA PIZARRA =====================
+// Días del mes. Todos los aciertos se importan como "con la mano" (1 punto).
+// Para un acierto con el pie, cambia el número por un texto, p. ej. "14p".
+const PIZARRA = {
+  "2026-07": {
+    aciertos: { hpous: [6, 14, 28], cperez: [7, 24], aortega: [7, 23], jzamora: [6], cnacher: [30], syuste: [] },
+    fallos: {
+      hpous: [2, 3, 7, 8, 9, 10, 13, 15, 16, 17, 20, 22, 23, 24, 27],
+      cperez: [6, 8, 13, 14, 15, 16, 17, 22, 23, 27, 28],
+      aortega: [1, 2, 6, 8, 13, 14, 16, 17, 20, 27, 28],
+      jzamora: [2, 8, 10, 16, 17, 22, 27, 28],
+      cnacher: [13, 14, 20, 23, 27, 28],
+      syuste: [8, 15, 16, 17, 27, 28],
+    },
+  },
+  "2026-08": {
+    aciertos: { hpous: [3, 7], cperez: [17, 25], aortega: [], jzamora: [], cnacher: [17, 26, 31], syuste: [] },
+    fallos: {
+      hpous: [4, 5, 6, 10, 11, 17, 18, 19, 20],
+      cperez: [4, 5, 6, 7, 18, 19, 20, 21, 26, 28],
+      aortega: [3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 17, 18, 19, 20],   // todos los laborables hasta el 20
+      jzamora: [3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 17, 18, 19, 20],   // todos los laborables hasta el 20
+      cnacher: [3, 4, 5, 6, 7, 10, 18, 19, 20, 24],
+      syuste: [7, 10],   // ojo: el 8 de agosto de 2026 es sábado
+    },
+  },
+};
+// Quién figura como verificador de los tiros importados (la web lo muestra como "la pizarra").
+const VERIFICADOR = "pizarra";
+// ===============================================================
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const $out = document.getElementById("out");
+const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+const pad = n => String(n).padStart(2, "0");
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const nombreMes = m => { const [y, mo] = m.split("-").map(Number); return `${MESES[mo - 1][0].toUpperCase()}${MESES[mo - 1].slice(1)} ${y}`; };
+const ICON = {
+  hit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  miss: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>',
+  none: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6" fill="none" stroke="currentColor" stroke-width="3"/></svg>',
+};
+
+let users = {}, mapa = {}, existentes = {};
+
+// Convierte la pizarra en una lista de tiros
+function tiros() {
+  const out = [], avisos = [];
+  for (const [mes, d] of Object.entries(PIZARRA)) {
+    const [y, mo] = mes.split("-").map(Number);
+    const visto = {};
+    const add = (alias, dia, resultado) => {
+      const pie = String(dia).toLowerCase().endsWith("p");
+      const n = parseInt(dia, 10);
+      const fecha = `${mes}-${pad(n)}`;
+      const key = `${alias}|${fecha}`;
+      if (visto[key]) avisos.push(`${alias}: el ${n} de ${MESES[mo - 1]} aparece dos veces; se usa el primero.`);
+      else {
+        visto[key] = true;
+        const wd = new Date(y, mo - 1, n).getDay();
+        if (wd === 0 || wd === 6) avisos.push(`${alias}: el ${n} de ${MESES[mo - 1]} es fin de semana.`);
+        out.push({ alias, mes, fecha, dia: n, resultado, tipo: resultado === "acierto" ? (pie ? "pie" : "mano") : null });
+      }
+    };
+    for (const [a, dias] of Object.entries(d.aciertos || {})) dias.forEach(x => add(a, x, "acierto"));
+    for (const [a, dias] of Object.entries(d.fallos || {})) dias.forEach(x => add(a, x, "fallo"));
+  }
+  return { out, avisos };
+}
+function aliases() {
+  const s = new Set();
+  for (const d of Object.values(PIZARRA)) for (const k of ["aciertos", "fallos"]) Object.keys(d[k] || {}).forEach(a => s.add(a));
+  return [...s];
+}
+function emparejar() {
+  for (const a of aliases()) {
+    const al = a.toLowerCase();
+    const u = Object.values(users).find(u => (u.email || "").toLowerCase().split("@")[0] === al)
+      || Object.values(users).find(u => (u.nombre || "").toLowerCase() === al);
+    mapa[a] = u?.id || "";
+  }
+}
+
+function render() {
+  const { out, avisos } = tiros();
+  const opciones = Object.values(users).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  const sinEmparejar = aliases().filter(a => !mapa[a]);
+  let html = `<section class="panel prose"><h1>Importar la pizarra</h1>
+    <p>Revisa que cada nombre de la pizarra corresponde a la persona correcta y que las tablas coinciden con lo que teníais apuntado. Los tiros se guardarán ya verificados. Los días que no aparecen quedan como “no tirado”.</p>
+    <table class="mini"><thead><tr><th scope="col">En la pizarra</th><th scope="col">Usuario de la web</th></tr></thead><tbody>
+    ${aliases().map(a => `<tr><td><strong>${esc(a)}</strong></td><td><select data-alias="${esc(a)}"><option value="">— Sin asignar —</option>
+      ${opciones.map(u => `<option value="${u.id}" ${mapa[a] === u.id ? "selected" : ""}>${esc(u.nombre)} (${esc(u.email || "")})</option>`).join("")}</select></td></tr>`).join("")}
+    </tbody></table>
+    ${avisos.length ? `<p class="warn">Revisa: ${avisos.map(esc).join(" ")}</p>` : ""}
+    ${sinEmparejar.length ? `<p class="warn">Asigna un usuario a: ${sinEmparejar.map(esc).join(", ")}.</p>` : ""}
+  </section>`;
+
+  for (const mes of Object.keys(PIZARRA)) {
+    const [y, mo] = mes.split("-").map(Number);
+    const n = new Date(y, mo, 0).getDate();
+    const delMes = out.filter(t => t.mes === mes);
+    const filas = aliases().map(a => {
+      const t = Object.fromEntries(delMes.filter(x => x.alias === a).map(x => [x.dia, x]));
+      const pts = Object.values(t).reduce((s, x) => s + (x.resultado === "acierto" ? (x.tipo === "pie" ? 5 : 1) : 0), 0);
+      return { a, t, pts };
+    }).sort((p, q) => q.pts - p.pts);
+    const we = d => { const w = new Date(y, mo - 1, d).getDay(); return w === 0 || w === 6; };
+    const head = Array.from({ length: n }, (_, i) => `<th scope="col" class="${we(i + 1) ? "we" : ""}"><span class="wd">${"DLMXJVS"[new Date(y, mo - 1, i + 1).getDay()]}</span>${i + 1}</th>`).join("");
+    const body = filas.map(({ a, t, pts }) => `<tr><th scope="row" class="who">${esc(users[mapa[a]]?.nombre || a)}</th>${Array.from({ length: n }, (_, i) => {
+      const x = t[i + 1];
+      const k = x ? (x.resultado === "acierto" ? "hit" : "miss") : "none";
+      return `<td class="${we(i + 1) ? "we" : ""} ${x && we(i + 1) ? "flag" : ""}"><span class="cell ${k}" style="display:grid">${ICON[k]}${x?.tipo === "pie" ? '<span class="foot-tag">5</span>' : ""}</span></td>`;
+    }).join("")}<td class="pts">${pts}</td></tr>`).join("");
+    const ex = existentes[mes] || 0;
+    html += `<section class="panel"><h2>${nombreMes(mes)}</h2>
+      <p class="muted">${delMes.filter(t => t.resultado === "acierto").length} aciertos y ${delMes.filter(t => t.resultado === "fallo").length} fallos.
+      ${ex ? `<span class="warn">Ya hay ${ex} tiros guardados en este mes; los de los mismos días y personas se sobrescribirán.</span>` : ""}</p>
+      <div class="grid-wrap"><table class="grid"><thead><tr><th scope="col" class="who">Jugador</th>${head}<th scope="col" class="pts" style="font-size:1rem">Pts</th></tr></thead>
+      <tbody>${body}</tbody></table></div></section>`;
+  }
+  html += `<section class="panel"><button class="btn primary" id="go" ${sinEmparejar.length ? "disabled" : ""}>Importar ${out.length} tiros</button>
+    <p class="muted" style="margin-top:.8rem">Los meses quedarán sin cerrar. Podrás cerrarlos desde Premios cuando quieras.</p></section>`;
+  $out.innerHTML = html;
+}
+
+async function importar() {
+  const { out } = tiros();
+  if (!confirm(`¿Importar ${out.length} tiros de ${Object.keys(PIZARRA).map(nombreMes).join(" y ")}?`)) return;
+  const btn = document.getElementById("go");
+  btn.disabled = true; btn.textContent = "Importando…";
+  try {
+    const lotes = [];
+    for (let i = 0; i < out.length; i += 400) lotes.push(out.slice(i, i + 400));
+    for (const lote of lotes) {
+      const b = writeBatch(db);
+      for (const t of lote) {
+        const uid = mapa[t.alias];
+        b.set(doc(db, "tiros", `${t.fecha}_${uid}`), {
+          uid, fecha: t.fecha, mes: t.mes, resultado: t.resultado, tipo: t.tipo,
+          pendiente: false, verificadoPor: VERIFICADOR, verificadoEn: serverTimestamp(),
+          creadoEn: serverTimestamp(), importado: true,
+        });
+      }
+      await b.commit();
+    }
+    // Ampliar el inicio del histórico para poder navegar a estos meses
+    const cfgRef = doc(db, "config", "app");
+    const cfg = (await getDoc(cfgRef)).data() || {};
+    const primero = Object.keys(PIZARRA).sort()[0];
+    if (!cfg.inicio || primero < cfg.inicio) {
+      const b = writeBatch(db); b.update(cfgRef, { inicio: primero }); await b.commit();
+    }
+    $out.innerHTML = `<section class="panel prose"><h1>Importación completada</h1>
+      <p>Se han guardado ${out.length} tiros. Ya puedes verlos en la web con las flechas de la Vista general.</p>
+      <p><strong>Ahora borra <code>importar.html</code> del repositorio</strong> para que no se vuelva a usar.</p>
+      <a class="btn primary" href="./" style="text-decoration:none">Volver a la web</a></section>`;
+  } catch (e) {
+    console.error(e);
+    btn.disabled = false; btn.textContent = `Importar ${out.length} tiros`;
+    alert(e?.code === "permission-denied"
+      ? "Firestore ha rechazado la escritura. Comprueba que has publicado las reglas nuevas y que tu usuario es administrador."
+      : (e?.message || "Algo ha fallado."));
+  }
+}
+
+$out.addEventListener("change", e => {
+  const s = e.target.closest("select[data-alias]");
+  if (s) { mapa[s.dataset.alias] = s.value; render(); }
+});
+$out.addEventListener("click", e => { if (e.target.id === "go") importar(); });
+
+onAuthStateChanged(auth, async user => {
+  if (!user) { $out.innerHTML = '<section class="panel"><p>Primero inicia sesión en la web con una cuenta de administrador.</p><a class="btn primary" href="./" style="text-decoration:none">Ir a la web</a></section>'; return; }
+  try {
+    const me = (await getDoc(doc(db, "usuarios", user.uid))).data();
+    if (!me?.admin) { $out.innerHTML = '<section class="panel"><p>Solo un administrador puede importar la pizarra.</p></section>'; return; }
+    const snap = await getDocs(collection(db, "usuarios"));
+    snap.forEach(d => (users[d.id] = { id: d.id, ...d.data() }));
+    for (const mes of Object.keys(PIZARRA)) {
+      existentes[mes] = (await getDocs(query(collection(db, "tiros"), where("mes", "==", mes)))).size;
+    }
+    emparejar();
+    render();
+  } catch (e) {
+    console.error(e);
+    $out.innerHTML = `<section class="panel"><p class="warn">${esc(e?.message || "No se han podido cargar los datos.")}</p></section>`;
+  }
+});
+</script>
+</body>
+</html>

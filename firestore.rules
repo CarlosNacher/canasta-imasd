@@ -38,7 +38,7 @@ service cloud.firestore {
     match /tiros/{id} {
       allow read: if isActive();
 
-      allow create: if isActive()
+      allow create: if isAdmin() || (isActive()
         && request.resource.data.uid == request.auth.uid
         && id == request.resource.data.fecha + '_' + request.auth.uid
         && request.resource.data.mes.matches('^[0-9]{4}-[0-9]{2}$')
@@ -46,7 +46,7 @@ service cloud.firestore {
         && request.resource.data.resultado in ['acierto', 'fallo']
         && request.resource.data.verificadoPor == null
         && request.resource.data.pendiente == (request.resource.data.resultado == 'acierto')
-        && !monthClosed(request.resource.data.mes);
+        && !monthClosed(request.resource.data.mes));
 
       allow update: if isAdmin() || (
         isActive() && !monthClosed(resource.data.mes) && (

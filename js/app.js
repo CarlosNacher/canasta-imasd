@@ -52,7 +52,7 @@ const fechaCorta = f => { const [, m, d] = f.split("-").map(Number); return `${d
 const fmtTs = ts => { const d = ts?.toDate?.(); return d ? d.toLocaleString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""; };
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const iniciales = n => (n || "?").split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join("");
-const nombre = uid => S.users[uid]?.nombre || "Usuario eliminado";
+const nombre = uid => uid === "pizarra" ? "la pizarra" : S.users[uid]?.nombre || "Usuario eliminado";
 const myUid = () => S.authUser?.uid;
 const valorAcierto = s => (s.tipo === "pie" ? 5 : 1);
 const puntosVerif = s => (s.resultado === "acierto" && s.verificadoPor ? valorAcierto(s) : 0);
