@@ -55,11 +55,9 @@ p { margin: 0 0 .8em; }
   border-bottom: 4px solid var(--orange);
 }
 .brand { display: flex; align-items: center; gap: .6rem; font: 700 1.6rem/1 var(--display); }
-.ball {
-  width: 26px; height: 26px; border-radius: 50%; background: var(--orange); position: relative; flex: none;
-  background-image:
-    linear-gradient(90deg, transparent 46%, #3a1a08 46% 54%, transparent 54%),
-    linear-gradient(0deg, transparent 46%, #3a1a08 46% 54%, transparent 54%);
+.logo {
+  width: 34px; height: 34px; flex: none; display: block;
+  background: #FFFFFF; border-radius: 9px; padding: 2px;
 }
 .me { display: flex; align-items: center; gap: .6rem; min-width: 0; }
 .me-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30vw; }
@@ -112,7 +110,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .login { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 1.5rem; }
 .login-card { width: min(420px, 100%); }
 .login-card .brand { color: var(--ink); margin-bottom: 1.2rem; font-size: 2.2rem; }
-.login-card .ball { width: 34px; height: 34px; }
+.login-card .logo { width: 56px; height: 56px; border-radius: 14px; box-shadow: 0 0 0 1px var(--line); }
 
 /* ---------- Vista general ---------- */
 .month-nav { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }

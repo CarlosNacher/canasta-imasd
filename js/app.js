@@ -196,7 +196,7 @@ function seqHtml(rondas = []) {
 function loginView() {
   if (S.needsSetup) {
     return `<div class="login"><form class="panel login-card" data-form="setup">
-      <div class="brand"><span class="ball" aria-hidden="true"></span>Canasta de I+D</div>
+      <div class="brand"><img class="logo" src="img/icon-512.png" alt="" width="34" height="34">Canasta de I+D</div>
       <h2>Crea la cuenta de administrador</h2>
       <p class="muted">Es la primera vez que se abre la web. Esta cuenta podrá dar de alta al resto del equipo.</p>
       <div class="field"><label for="s-nombre">Nombre</label><input id="s-nombre" name="nombre" data-keep="s-nombre" required autocomplete="name"></div>
@@ -206,7 +206,7 @@ function loginView() {
     </form></div>`;
   }
   return `<div class="login"><form class="panel login-card" data-form="login">
-    <div class="brand"><span class="ball" aria-hidden="true"></span>Canasta de I+D</div>
+    <div class="brand"><img class="logo" src="img/icon-512.png" alt="" width="34" height="34">Canasta de I+D</div>
     <div class="field"><label for="l-email">Correo</label><input id="l-email" name="email" type="email" data-keep="l-email" required autocomplete="username"></div>
     <div class="field"><label for="l-pass">Contraseña</label><input id="l-pass" name="password" type="password" data-keep="l-pass" required autocomplete="current-password"></div>
     <div class="row" style="justify-content:space-between">
@@ -222,7 +222,7 @@ function shell() {
   const views = { general: viewGeneral, info: viewInfo, notif: viewNotif, premios: viewPremios, usuarios: viewUsuarios };
   return `
   <header class="top">
-    <div class="brand"><span class="ball" aria-hidden="true"></span>Canasta</div>
+    <div class="brand"><img class="logo" src="img/icon-512.png" alt="" width="34" height="34">Canasta</div>
     <div class="me">${avatar(myUid(), "sm")}<span class="me-name">${esc(S.me?.nombre)}</span>
       <button class="btn ghost small" data-act="logout">Salir</button></div>
   </header>
