@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Canasta de I+D</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏀</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app"><p class="boot">Cargando…</p></div>
+<dialog id="modal"><div id="modal-body"></div></dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<!-- ===================== Fórmula de reparto (se usa en Info y en Premios) ===================== -->
+<template id="tpl-formula">
+  <div class="formula">
+    <p>Solo hay un ganador, y su premio es un almuerzo con un precio simbólico de <strong>8 €</strong> que pagan entre todos los demás.</p>
+    <p>Sea <var>N</var> el número de participantes del mes. Ordenamos a los <var>N</var>&nbsp;−&nbsp;1 que pagan desde la cola de la tabla: el último tiene la posición <var>p</var>&nbsp;=&nbsp;1, el penúltimo <var>p</var>&nbsp;=&nbsp;2… y el segundo clasificado <var>p</var>&nbsp;=&nbsp;<var>N</var>&nbsp;−&nbsp;1.</p>
+    <div class="eq">
+      <p>Paga(<var>p</var>) = 8 € · (½)<sup><var>p</var></sup> &nbsp;&nbsp;para <var>p</var> = 2 … <var>N</var>&nbsp;−&nbsp;1</p>
+      <p>Paga(1) = 8 € · [ ½ + (½)<sup><var>N</var>−1</sup> ]</p>
+    </div>
+    <p>La suma ½ + ¼ + … + (½)<sup><var>N</var>−1</sup> vale 1 − (½)<sup><var>N</var>−1</sup>, así que siempre sobra un “residuo” igual a lo que paga el segundo, (½)<sup><var>N</var>−1</sup>. Ese residuo se lo queda el último, que paga siempre la mitad más un poquito. En total se pagan exactamente 8 €.</p>
+
+    <h3>Ejemplo con 5 participantes</h3>
+    <div class="table-scroll">
+    <table class="mini">
+      <thead><tr><th scope="col">Clasificación</th><th scope="col"><var>p</var></th><th scope="col">Fracción</th><th scope="col">Paga</th></tr></thead>
+      <tbody>
+        <tr><td>1º (ganador)</td><td>—</td><td>—</td><td>0,00 €</td></tr>
+        <tr><td>2º</td><td>4</td><td>1/16</td><td>0,50 €</td></tr>
+        <tr><td>3º</td><td>3</td><td>1/8</td><td>1,00 €</td></tr>
+        <tr><td>4º</td><td>2</td><td>1/4</td><td>2,00 €</td></tr>
+        <tr><td>5º (último)</td><td>1</td><td>1/2 + 1/16</td><td>4,50 €</td></tr>
+      </tbody>
+      <tfoot><tr><td colspan="3">Total</td><td>8,00 €</td></tr></tfoot>
+    </table>
+    </div>
+
+    <h3>Empates</h3>
+    <p>El primer puesto no puede quedar empatado (se resuelve con muerte súbita), pero el resto sí. Los empatados se reparten a partes iguales lo que pagarían los puestos que ocupan.</p>
+    <p>En el ejemplo de 5, si la clasificación queda 1º, 2º, 3º, 3º, 4º, los dos terceros pagan lo que pagarían un tercero y un cuarto, entre dos: (1 € + 2 €) / 2 = <strong>1,50 € cada uno</strong>. El segundo sigue pagando 0,50 € y el último 4,50 €.</p>
+    <p class="muted">Con muchos participantes los importes pueden tener más de dos decimales; la web los muestra redondeados al céntimo.</p>
+  </div>
+</template>
+
+<!-- ===================== Pestaña Info (edita aquí las reglas) ===================== -->
+<template id="tpl-info">
+  <section class="panel prose">
+    <h1>Reglas del juego</h1>
+
+    <h2>Desde dónde se tira</h2>
+    <p>Se cuentan cinco tablones desde la puerta de I+D. Puedes tirar desde cualquier punto detrás de esos cinco tablones.</p>
+
+    <h2>Puntuación</h2>
+    <table class="mini">
+      <tbody>
+        <tr><td>Acierto con la mano</td><td><strong>1 punto</strong></td></tr>
+        <tr><td>Acierto con el pie</td><td><strong>5 puntos</strong></td></tr>
+        <tr><td>Fallo</td><td>0 puntos</td></tr>
+      </tbody>
+    </table>
+    <p>Cada día del mes tienes un tiro. A final de mes gana quien más puntos haya sumado.</p>
+
+    <h2>Verificación</h2>
+    <p>Un acierto solo cuenta cuando al menos otra persona del equipo lo verifica. Hasta entonces aparece como “marcado sin verificar” (tic gris) y no suma. Los fallos no necesitan verificación. Si un día no tiras, no hace falta que entres en la web: el día queda como “no tirado”.</p>
+
+    <h2>Empate en el primer puesto</h2>
+    <p>Si a final de mes hay empate por el primer puesto, se disputa una muerte súbita entre todos los candidatos. En la tabla aparece una columna extra marcada con <strong>*</strong> después del último día del mes; solo tienen datos los candidatos, con los aciertos y fallos consecutivos que dure la muerte súbita, hasta proclamar un único vencedor.</p>
+
+    <h2>El premio y quién paga</h2>
+  </section>
+  <section class="panel prose" data-slot="formula"></section>
+
+  <section class="panel prose">
+    <h2>Cómo se usa la web</h2>
+    <p>En <strong>Vista general</strong> anota tu tiro del día. Pulsa cualquier casilla para ver el detalle o verificar el acierto de un compañero. En <strong>Notificaciones</strong> tienes los aciertos pendientes de verificar y lo que debes. En <strong>Premios</strong> está el ganador de cada mes y cuánto paga cada uno. Quien lleve más de un mes sin pagar un almuerzo verá un cartel de <strong>moroso</strong> sobre su foto.</p>
+  </section>
+</template>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

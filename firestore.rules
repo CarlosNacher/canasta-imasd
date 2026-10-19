@@ -1,0 +1,98 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function userPath(uid) { return /databases/$(database)/documents/usuarios/$(uid); }
+    function isActive() {
+      return signedIn() && exists(userPath(request.auth.uid))
+        && get(userPath(request.auth.uid)).data.activo == true;
+    }
+    function isAdmin() { return isActive() && get(userPath(request.auth.uid)).data.admin == true; }
+    function monthClosed(mes) { return exists(/databases/$(database)/documents/pagos/$(mes)); }
+
+    // Configuración general. Se puede leer sin sesión para saber si falta crear el administrador.
+    match /config/app {
+      allow get: if true;
+      allow create: if signedIn()
+        && !exists(/databases/$(database)/documents/config/app)
+        && getAfter(userPath(request.auth.uid)).data.admin == true;
+      allow update: if isAdmin();
+    }
+
+    // Perfiles de usuario
+    match /usuarios/{uid} {
+      allow read: if isActive() || (signedIn() && request.auth.uid == uid);
+      // Solo un admin da de alta. Excepción: el primer usuario (administrador inicial).
+      allow create: if isAdmin()
+        || (signedIn() && request.auth.uid == uid
+            && !exists(/databases/$(database)/documents/config/app));
+      allow update: if isAdmin()
+        || (isActive() && request.auth.uid == uid
+            && !request.resource.data.diff(resource.data).affectedKeys()
+                 .hasAny(['admin', 'activo', 'email']));
+      allow delete: if false;
+    }
+
+    // Tiros. Id del documento: AAAA-MM-DD_uid
+    match /tiros/{id} {
+      allow read: if isActive();
+
+      allow create: if isActive()
+        && request.resource.data.uid == request.auth.uid
+        && id == request.resource.data.fecha + '_' + request.auth.uid
+        && request.resource.data.mes.matches('^[0-9]{4}-[0-9]{2}$')
+        && request.resource.data.fecha.matches('^' + request.resource.data.mes + '-[0-9]{2}$')
+        && request.resource.data.resultado in ['acierto', 'fallo']
+        && request.resource.data.verificadoPor == null
+        && request.resource.data.pendiente == (request.resource.data.resultado == 'acierto')
+        && !monthClosed(request.resource.data.mes);
+
+      allow update: if isAdmin() || (
+        isActive() && !monthClosed(resource.data.mes) && (
+          // El dueño corrige su tiro mientras nadie lo haya verificado
+          (resource.data.uid == request.auth.uid
+            && resource.data.verificadoPor == null
+            && request.resource.data.verificadoPor == null
+            && request.resource.data.uid == resource.data.uid
+            && request.resource.data.fecha == resource.data.fecha
+            && request.resource.data.mes == resource.data.mes
+            && request.resource.data.resultado in ['acierto', 'fallo']
+            && request.resource.data.pendiente == (request.resource.data.resultado == 'acierto'))
+          ||
+          // Otra persona verifica un acierto
+          (resource.data.uid != request.auth.uid
+            && resource.data.resultado == 'acierto'
+            && resource.data.verificadoPor == null
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['verificadoPor', 'verificadoEn', 'pendiente'])
+            && request.resource.data.verificadoPor == request.auth.uid
+            && request.resource.data.pendiente == false)
+        )
+      );
+
+      allow delete: if isAdmin()
+        || (isActive() && resource.data.uid == request.auth.uid
+            && resource.data.verificadoPor == null
+            && !monthClosed(resource.data.mes));
+    }
+
+    // Meses cerrados: clasificación congelada, importes y estado de pago. Id: AAAA-MM
+    match /pagos/{mes} {
+      allow read: if isActive();
+      allow create, delete: if isAdmin();
+      // El ganador del mes (o un admin) marca quién ha pagado
+      allow update: if isAdmin()
+        || (isActive() && resource.data.ganador == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['pagado', 'pagadoEn']));
+    }
+
+    // Muertes súbitas. Id: AAAA-MM
+    match /desempates/{mes} {
+      allow read: if isActive();
+      allow create, update: if isActive() && !monthClosed(mes);
+      allow delete: if isAdmin();
+    }
+  }
+}
