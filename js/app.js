@@ -357,7 +357,7 @@ function viewPremios() {
   const months = [];
   for (let m = cur; m >= start; m = sumarMeses(m, -1)) months.push(m);
   return `
-  <section class="panel prose"><h1>Premios</h1>${formulaHtml()}</section>
+  <h1>Premios</h1>
   ${months.map(premioMes).join("")}`;
 }
 function premioMes(m) {
