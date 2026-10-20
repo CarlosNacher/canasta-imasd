@@ -33,7 +33,12 @@ const S = {
   monthCache: {}, loadingMonths: new Set(),
   tab: "general", viewMonth: null, openMonths: new Set(),
   subs: [], monthUnsub: null, bootstrapping: false, scrolledFor: null,
+  modoMovil: "semana", weekIdx: 0, weekFor: null,
 };
+// Pantallas estrechas (móvil): navegación inferior y tabla por semanas
+const MQ = window.matchMedia("(max-width: 700px)");
+const esMovil = () => MQ.matches;
+MQ.addEventListener?.("change", () => render());
 
 // ------------------------------------------------------------------ Utilidades
 const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
@@ -58,6 +63,16 @@ const valorAcierto = s => (s.tipo === "pie" ? 5 : 1);
 const puntosVerif = s => (s.resultado === "acierto" && s.verificadoPor ? valorAcierto(s) : 0);
 const puntosPend = s => (s.resultado === "acierto" && !s.verificadoPor ? valorAcierto(s) : 0);
 const mesCerrado = m => !!S.pagos[m]?.cerrado;
+// Semanas del mes de lunes a domingo (la primera y la última pueden estar incompletas)
+function semanasDelMes(m) {
+  const n = diasDelMes(m), [y, mo] = parseYM(m), out = [];
+  let cur = [];
+  for (let d = 1; d <= n; d++) {
+    cur.push(d);
+    if (new Date(y, mo - 1, d).getDay() === 0 || d === n) { out.push(cur); cur = []; }
+  }
+  return out;
+}
 
 function toast(msg, err = false) {
   $toast.textContent = msg;
@@ -181,11 +196,11 @@ function avatar(uid, size = "md") {
   const inner = u.foto ? `<img src="${esc(u.foto)}" alt="">` : `<span aria-hidden="true">${esc(iniciales(u.nombre))}</span>`;
   return `<span class="avatar ${size}" title="${esc(u.nombre || "")}${mor ? " (moroso)" : ""}">${inner}${mor ? '<span class="ribbon">Moroso</span>' : ""}</span>`;
 }
-function shootButtons(fecha) {
-  return `<div class="row">
-    <button class="btn hit" data-act="shoot" data-date="${fecha}" data-res="acierto" data-tipo="mano">Acierto con la mano</button>
-    <button class="btn foot" data-act="shoot" data-date="${fecha}" data-res="acierto" data-tipo="pie">Acierto con el pie</button>
-    <button class="btn miss" data-act="shoot" data-date="${fecha}" data-res="fallo">Fallo</button>
+function shootButtons(fecha, uid = myUid()) {
+  return `<div class="row shoot">
+    <button class="btn hit" data-act="shoot" data-uid="${uid}" data-date="${fecha}" data-res="acierto" data-tipo="mano">Acierto con la mano</button>
+    <button class="btn foot" data-act="shoot" data-uid="${uid}" data-date="${fecha}" data-res="acierto" data-tipo="pie">Acierto con el pie</button>
+    <button class="btn miss" data-act="shoot" data-uid="${uid}" data-date="${fecha}" data-res="fallo">Fallo</button>
   </div>`;
 }
 function seqHtml(rondas = []) {
@@ -218,7 +233,13 @@ function loginView() {
 
 function shell() {
   const n = notificaciones().total;
-  const tabs = [["general", "Vista general"], ["info", "Info"], ["notif", "Notificaciones"], ["premios", "Premios"], ["usuarios", "Usuarios"]];
+  const tabs = [
+    ["general", "Vista general", "General", '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11M15 9v11"/>'],
+    ["info", "Info", "Info", '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>'],
+    ["notif", "Notificaciones", "Avisos", '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/>'],
+    ["premios", "Premios", "Premios", '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8 20h8"/>'],
+    ["usuarios", "Usuarios", "Usuarios", '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 19a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14a5 5 0 0 1 5.5 5"/>'],
+  ];
   const views = { general: viewGeneral, info: viewInfo, notif: viewNotif, premios: viewPremios, usuarios: viewUsuarios };
   return `
   <header class="top">
@@ -227,7 +248,9 @@ function shell() {
       <button class="btn ghost small" data-act="logout">Salir</button></div>
   </header>
   <nav class="tabs" role="tablist" aria-label="Secciones">
-    ${tabs.map(([k, l]) => `<button role="tab" aria-selected="${S.tab === k}" class="tab ${S.tab === k ? "on" : ""}" data-act="tab" data-tab="${k}">${l}${k === "notif" && n ? `<span class="badge" aria-label="${n} pendientes">${n}</span>` : ""}</button>`).join("")}
+    ${tabs.map(([k, l, c, ico]) => `<button role="tab" aria-selected="${S.tab === k}" class="tab ${S.tab === k ? "on" : ""}" data-act="tab" data-tab="${k}">
+      <span class="tab-ico"><svg viewBox="0 0 24 24" aria-hidden="true">${ico}</svg>${k === "notif" && n ? `<span class="badge" aria-label="${n} pendientes">${n}</span>` : ""}</span>
+      <span class="t-long">${l}</span><span class="t-short">${c}</span></button>`).join("")}
   </nav>
   <main class="main">${views[S.tab]()}</main>`;
 }
@@ -246,23 +269,48 @@ function viewGeneral() {
     (e[b]?.puntos || 0) - (e[a]?.puntos || 0) || nombre(a).localeCompare(nombre(b), "es"));
   const start = S.config?.inicio || cur;
 
-  const head = Array.from({ length: n }, (_, i) => {
-    const d = i + 1, f = `${m}-${pad(d)}`, wd = new Date(y, mo - 1, d).getDay();
+  // En móvil, por defecto se ve una semana; con "Mes" se ve el mes entero con scroll lateral
+  const semanas = semanasDelMes(m);
+  if (S.weekFor !== m) {
+    const di = m === cur ? Number(t.slice(8)) : null;
+    S.weekIdx = di ? semanas.findIndex(w => w.includes(di)) : semanas.length - 1;
+    S.weekFor = m;
+  }
+  S.weekIdx = Math.min(Math.max(S.weekIdx, 0), semanas.length - 1);
+  const porSemana = esMovil() && S.modoMovil === "semana";
+  const dias = porSemana ? semanas[S.weekIdx] : Array.from({ length: n }, (_, i) => i + 1);
+  const ultimaSemana = !porSemana || S.weekIdx === semanas.length - 1;
+  const starVisible = showStar && ultimaSemana;
+  const abrev = MESES[mo - 1].slice(0, 3);
+  const semanaNav = esMovil() ? `<div class="week-nav">
+    <div class="seg" role="group" aria-label="Vista de la tabla">
+      <button class="${porSemana ? "on" : ""}" data-act="modo" data-modo="semana" aria-pressed="${porSemana}">Semana</button>
+      <button class="${porSemana ? "" : "on"}" data-act="modo" data-modo="mes" aria-pressed="${!porSemana}">Mes</button>
+    </div>
+    ${porSemana ? `<div class="week-step">
+      <button class="icon-btn" data-act="week" data-k="-1" aria-label="Semana anterior" ${S.weekIdx === 0 ? "disabled" : ""}>‹</button>
+      <span>${dias[0]}–${dias[dias.length - 1]} ${abrev}</span>
+      <button class="icon-btn" data-act="week" data-k="1" aria-label="Semana siguiente" ${S.weekIdx === semanas.length - 1 ? "disabled" : ""}>›</button>
+    </div>` : ""}
+  </div>` : "";
+
+  const head = dias.map(d => {
+    const f = `${m}-${pad(d)}`, wd = new Date(y, mo - 1, d).getDay();
     return `<th scope="col" class="${f === t ? "today" : ""} ${wd === 0 || wd === 6 ? "we" : ""}" ${f === t ? 'id="col-today"' : ""}><span class="wd">${"DLMXJVS"[wd]}</span>${d}</th>`;
   }).join("");
 
   const body = rows.map(uid => {
-    const cells = Array.from({ length: n }, (_, i) => {
-      const f = `${m}-${pad(i + 1)}`, s = shots[`${f}_${uid}`], k = kindOf(s, f);
-      const mineToday = k === "empty" && uid === me && f <= t && !mesCerrado(m);
+    const cells = dias.map(d => {
+      const i = d - 1, f = `${m}-${pad(d)}`, s = shots[`${f}_${uid}`], k = kindOf(s, f);
+      const mineToday = k === "empty" && (uid === me || S.me?.admin) && f <= t && !mesCerrado(m);
       return `<td class="${f === t ? "today" : ""}"><button class="cell ${k}${mineToday ? " mine" : ""}" data-act="cell" data-uid="${uid}" data-date="${f}"
         aria-label="${esc(nombre(uid))}, día ${i + 1}: ${KIND[k].label}" ${k === "empty" && !mineToday ? "tabindex=\"-1\"" : ""}>${KIND[k].icon}${s?.tipo === "pie" && s.resultado === "acierto" ? '<span class="foot-tag">5</span>' : ""}</button></td>`;
     }).join("");
-    const star = showStar ? `<td class="star">${tb?.candidatos?.includes(uid) ? seqHtml(tb.rondas?.[uid]) : ""}</td>` : "";
+    const star = starVisible ? `<td class="star">${tb?.candidatos?.includes(uid) ? seqHtml(tb.rondas?.[uid]) : ""}</td>` : "";
     const pts = e[uid]?.puntos || 0, pend = e[uid]?.pend || 0;
     const leader = (st.ganador === uid) || (!st.ganador && pts === maxPts && pts > 0);
     return `<tr class="${leader ? "leader" : ""}"><th scope="row" class="who"><span class="who-in">${avatar(uid, "xs")}<span>${esc(nombre(uid))}</span></span></th>${cells}${star}
-      <td class="pts">${pts}${pend ? `<small>+${pend} sin verificar</small>` : ""}</td></tr>`;
+      <td class="pts">${pts}${pend ? `<small>+${pend}<span class="t-long"> sin verificar</span></small>` : ""}</td></tr>`;
   }).join("");
 
   let todayPanel = "";
@@ -285,10 +333,11 @@ function viewGeneral() {
     ${mesCerrado(m) ? '<span class="chip">Mes cerrado</span>' : ""}
   </div>
   ${todayPanel}
+  ${semanaNav}
   <div class="grid-wrap">
-    <table class="grid">
-      <thead><tr><th scope="col" class="who">Jugador</th>${head}${showStar ? '<th scope="col" class="star" title="Muerte súbita">*</th>' : ""}<th scope="col" class="pts" style="font-size:1rem">Pts</th></tr></thead>
-      <tbody>${body || `<tr><td colspan="${n + 2}" class="muted" style="padding:1rem">Todavía no hay jugadores.</td></tr>`}</tbody>
+    <table class="grid ${porSemana ? "week" : ""}">
+      <thead><tr><th scope="col" class="who">Jugador</th>${head}${starVisible ? '<th scope="col" class="star" title="Muerte súbita">*</th>' : ""}<th scope="col" class="pts" style="font-size:1rem">Pts</th></tr></thead>
+      <tbody>${body || `<tr><td colspan="${dias.length + 2}" class="muted" style="padding:1rem">Todavía no hay jugadores.</td></tr>`}</tbody>
     </table>
   </div>
   <ul class="legend">
@@ -378,7 +427,7 @@ function premioMes(m) {
 }
 function tablaReparto(filas, opts = {}) {
   const { pagos = null, m = null, puedeMarcar = false } = opts;
-  return `<div class="table-scroll"><table class="mini">
+  return `<div class="table-scroll"><table class="mini stack">
     <thead><tr><th scope="col">Puesto</th><th scope="col">Jugador</th><th scope="col" class="num">Puntos</th><th scope="col" class="num">Paga</th>${pagos ? '<th scope="col">Estado</th>' : ""}</tr></thead>
     <tbody>${filas.map(f => {
       const pagado = pagos?.pagado?.[f.uid];
@@ -388,10 +437,10 @@ function tablaReparto(filas, opts = {}) {
         else estado = `${pagado ? `<span class="chip ok">Pagado</span>` : `<span class="chip warn">Pendiente</span>`}
           ${puedeMarcar ? `<button class="btn small ghost" data-act="toggle-paid" data-month="${m}" data-uid="${f.uid}">${pagado ? "Desmarcar" : "Marcar como pagado"}</button>` : ""}`;
       }
-      return `<tr><td>${f.puesto}º${f.empatado ? " (empate)" : ""}</td>
-        <td><span class="who-in">${avatar(f.uid, "xs")}<span>${esc(nombre(f.uid))}</span></span></td>
-        <td class="num">${f.puntos}${f.pend ? ` <span class="muted">(+${f.pend})</span>` : ""}</td>
-        <td class="num">${f.esGanador ? "—" : f.importe == null ? "?" : euros(f.importe)}</td>${pagos ? `<td>${estado}</td>` : ""}</tr>`;
+      return `<tr><td class="c-puesto">${f.puesto}º${f.empatado ? '<span class="t-long"> (empate)</span><span class="t-short">=</span>' : ""}</td>
+        <td class="c-jug"><span class="who-in">${avatar(f.uid, "xs")}<span>${esc(nombre(f.uid))}</span></span></td>
+        <td class="num c-pts">${f.puntos}${f.pend ? ` <span class="muted">(+${f.pend})</span>` : ""}<span class="t-short"> pts</span></td>
+        <td class="num c-paga">${f.esGanador ? "—" : f.importe == null ? "?" : euros(f.importe)}</td>${pagos ? `<td class="c-estado">${estado}</td>` : ""}</tr>`;
     }).join("")}</tbody>
   </table></div>`;
 }
@@ -589,8 +638,8 @@ onAuthStateChanged(auth, async user => {
 });
 
 // ------------------------------------------------------------------ Acciones
-async function shoot(fecha, resultado, tipo) {
-  const uid = myUid(), id = `${fecha}_${uid}`, m = fecha.slice(0, 7);
+async function shoot(fecha, resultado, tipo, uid = myUid()) {
+  const id = `${fecha}_${uid}`, m = fecha.slice(0, 7);
   const prev = getMonthShots(m)?.[id];
   if (prev?.verificadoPor) return toast("Este tiro ya está verificado y no se puede cambiar.", true);
   if (fecha > hoy()) return toast("No puedes anotar un tiro de un día que aún no ha llegado.", true);
@@ -600,6 +649,7 @@ async function shoot(fecha, resultado, tipo) {
     pendiente: resultado === "acierto",
     verificadoPor: null, verificadoEn: null,
     creadoEn: serverTimestamp(),
+    ...(uid !== myUid() ? { anotadoPor: myUid() } : {}),
   });
   toast(resultado === "acierto" ? "Acierto anotado. Falta que alguien lo verifique." : "Fallo anotado.");
 }
@@ -613,18 +663,20 @@ function openCell(uid, fecha) {
   const mine = uid === myUid();
   const editable = fecha <= hoy() && !mesCerrado(m);
   const k = kindOf(s, fecha);
-  if (k === "empty" && !(mine && editable)) return;
+  const puedeEditar = (mine || S.me?.admin) && editable;
+  if (k === "empty" && !puedeEditar) return;
   let html = `<div class="row" style="gap:.8rem">${avatar(uid, "md")}<div><h2 style="margin:0">${esc(nombre(uid))}</h2><p class="muted" style="margin:0">${fechaLarga(fecha)}</p></div></div>
     <p style="margin-top:1rem"><span class="cell ${k}" style="display:inline-grid;vertical-align:middle;margin-right:.4rem">${KIND[k].icon}</span><strong>${esc(s ? describe(s) : k === "none" ? "No tirado" : "Sin anotar todavía")}</strong></p>`;
   if (s?.verificadoPor) html += `<p>Verificado por <strong>${esc(nombre(s.verificadoPor))}</strong> el ${fmtTs(s.verificadoEn)}.</p>`;
-  if (s?.creadoEn) html += `<p class="muted">Anotado el ${fmtTs(s.creadoEn)}.</p>`;
+  if (s?.creadoEn) html += `<p class="muted">Anotado el ${fmtTs(s.creadoEn)}${s.anotadoPor ? ` por ${esc(nombre(s.anotadoPor))}` : ""}.</p>`;
   const acts = [];
-  if (mine && editable && !s?.verificadoPor) {
-    html += `<p style="margin-top:1rem"><strong>${s ? "Cambiar tu tiro" : "Anotar tu tiro"}</strong></p>${shootButtons(fecha)}`;
+  if (puedeEditar && !s?.verificadoPor) {
+    const quien = mine ? "tu tiro" : `el tiro de ${esc(nombre(uid))}`;
+    html += `<p style="margin-top:1rem"><strong>${s ? "Cambiar" : "Anotar"} ${quien}</strong></p>${shootButtons(fecha, uid)}`;
     if (s) acts.push(`<button class="btn danger" data-act="delete-shot" data-id="${id}">Borrar tiro</button>`);
   }
   if (!mine && s?.pendiente && editable) acts.push(`<button class="btn hit" data-act="verify" data-id="${id}">Verificar acierto</button>`);
-  if (S.me?.admin && s && !(mine && !s.verificadoPor)) acts.push(`<button class="btn danger" data-act="delete-shot" data-id="${id}">Borrar tiro (admin)</button>`);
+  if (S.me?.admin && s?.verificadoPor) acts.push(`<button class="btn danger" data-act="delete-shot" data-id="${id}">Borrar tiro (admin)</button>`);
   acts.push('<button class="btn ghost" data-act="modal-close">Cerrar</button>');
   html += `<div class="modal-actions">${acts.join("")}</div>`;
   $modalBody.innerHTML = html;
@@ -668,7 +720,9 @@ document.addEventListener("click", async e => {
         S.viewMonth = k === 0 ? mesActual() : sumarMeses(S.viewMonth, k);
         subscribeMonth(); render(); break;
       }
-      case "shoot": $modal.open && $modal.close(); await shoot(d.date, d.res, d.tipo); break;
+      case "modo": S.modoMovil = d.modo; S.scrolledFor = null; render(); break;
+      case "week": S.weekIdx += Number(d.k); render(); break;
+      case "shoot": $modal.open && $modal.close(); await shoot(d.date, d.res, d.tipo, d.uid || myUid()); break;
       case "cell": openCell(d.uid, d.date); break;
       case "verify": $modal.open && $modal.close(); await verify(d.id); break;
       case "delete-shot":

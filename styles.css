@@ -78,7 +78,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .tab.on { color: var(--ink); border-bottom-color: var(--orange); }
 .badge { background: var(--orange); color: #fff; border-radius: 999px; font: 700 .75rem/1 var(--font); padding: .2rem .45rem; }
 
-.main { max-width: 1400px; margin: 0 auto; padding: 1.25rem clamp(.75rem, 3vw, 2rem) 3rem; display: grid; gap: 1.25rem; }
+.main { max-width: 1400px; margin: 0 auto; padding: 1.25rem clamp(.75rem, 3vw, 2rem) 3rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: clamp(1rem, 2.5vw, 1.5rem); }
 .prose { max-width: 75ch; }
 .prose h2 { margin-top: 1.2em; }
@@ -115,7 +115,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 /* ---------- Vista general ---------- */
 .month-nav { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
 .month-nav h1 { margin: 0; font-size: clamp(2rem, 5vw, 2.8rem); min-width: 8ch; }
-.icon-btn { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); cursor: pointer; font-size: 1.3rem; line-height: 1; }
+.icon-btn { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); cursor: pointer; font-size: 1.3rem; line-height: 1; flex: none; }
 .icon-btn:disabled { opacity: .35; cursor: default; }
 
 .today-panel { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .8rem 1.5rem; }
@@ -240,9 +240,10 @@ dialog::backdrop { background: rgba(10, 18, 30, .55); }
 #toast {
   position: fixed; left: 50%; bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%) translateY(150%);
   background: var(--ink); color: var(--surface); padding: .7rem 1.1rem; border-radius: 10px; max-width: calc(100vw - 2rem);
-  transition: transform .2s ease; z-index: 100; font-weight: 500;
+  transition: transform .2s ease, opacity .2s ease, visibility .2s; z-index: 100; font-weight: 500;
+  opacity: 0; visibility: hidden;
 }
-#toast.show { transform: translateX(-50%) translateY(0); }
+#toast.show { transform: translateX(-50%) translateY(0); opacity: 1; visibility: visible; }
 #toast.err { background: var(--miss); color: #fff; }
 
 @media (max-width: 640px) {
@@ -251,3 +252,99 @@ dialog::backdrop { background: rgba(10, 18, 30, .55); }
   .who-in span:last-child { max-width: 6.5rem; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* ---------- Elementos solo de móvil (ocultos en escritorio) ---------- */
+.t-short, .tab-ico { display: none; }
+.week-nav { display: flex; align-items: center; justify-content: space-between; gap: .6rem; flex-wrap: wrap; }
+.seg { display: inline-flex; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+.seg button { border: 0; background: none; padding: .45rem 1rem; border-radius: 999px; font-weight: 600; color: var(--muted); cursor: pointer; }
+.seg button.on { background: var(--ink); color: var(--surface); }
+.week-step { display: flex; align-items: center; gap: .5rem; font: 600 1.15rem/1 var(--display); }
+.week-step span { min-width: 5.5rem; text-align: center; }
+
+/* ======================= MÓVIL ======================= */
+@media (max-width: 700px) {
+  .t-long { display: none; }
+  .t-short { display: inline; }
+
+  /* Cabecera fija arriba, pegada a la barra de estado */
+  .top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; padding: .55rem .9rem; border-bottom-width: 3px; }
+  body::before { background: var(--bar); }
+  .brand { font-size: 1.35rem; }
+  .logo { width: 30px; height: 30px; }
+  .me-name { display: none; }
+
+  /* Pestañas como barra inferior de app */
+  .tabs {
+    position: fixed; top: auto; left: 0; right: 0; bottom: 0; z-index: 40;
+    padding: 0 0 env(safe-area-inset-bottom, 0px); gap: 0; overflow: visible; justify-content: space-around;
+    border-top: 1px solid var(--line); border-bottom: 0;
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  }
+  .tab {
+    flex: 1 1 0; min-width: 0; flex-direction: column; gap: 4px; padding: .5rem 0 .45rem;
+    font: 600 .72rem/1 var(--font); border-bottom: 0; border-top: 3px solid transparent;
+  }
+  .tab.on { border-top-color: var(--orange); color: var(--ink); }
+  .tab-ico { display: block; position: relative; width: 24px; height: 24px; }
+  .tab-ico svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .tab-ico .badge { position: absolute; top: -6px; right: -13px; font-size: .65rem; padding: .15rem .35rem; }
+
+  .main { padding: 1rem .6rem calc(5.5rem + env(safe-area-inset-bottom, 0px)); gap: 1rem; }
+  .panel { padding: 1rem; }
+  h1 { font-size: 1.7rem; }
+
+  /* Vista general */
+  .month-nav { justify-content: space-between; }
+  .month-nav h1 { font-size: 1.9rem; min-width: 0; flex: 1; text-align: center; }
+  .today-panel { flex-direction: column; align-items: stretch; gap: .7rem; }
+  .shoot { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; }
+  .shoot .btn { padding: .7rem .3rem; min-height: 58px; font-size: .9rem; }
+
+  .grid .who { padding: 4px .45rem 4px .4rem; }
+  .who-in { gap: .4rem; }
+  .who-in span:last-child { max-width: 5.2rem; }
+  .grid .pts { padding: 4px .45rem; min-width: 44px; font-size: 1.2rem; }
+  .grid .pts small { font-size: .68rem; }
+  .cell { width: 30px; height: 30px; }
+  .grid.week { width: 100%; table-layout: fixed; }
+  .grid.week thead th { min-width: 0; }
+  .grid.week thead .who { width: 7.4rem; }
+  .grid.week thead .pts { width: 3.3rem; }
+  .grid.week thead .star { width: 3.2rem; }
+  .legend { font-size: .82rem; gap: .3rem .9rem; }
+  .history li { grid-template-columns: 3.4rem 1fr; gap: .5rem; font-size: .95rem; }
+
+  /* Premios: cada fila del reparto como tarjeta */
+  table.mini.stack, table.mini.stack tbody { display: block; }
+  table.mini.stack thead { display: none; }
+  table.mini.stack tr {
+    display: grid; grid-template-columns: 2.4rem 1fr auto; column-gap: .6rem; row-gap: .3rem;
+    align-items: center; padding: .7rem 0; border-bottom: 1px solid var(--line);
+  }
+  table.mini.stack td { display: block; padding: 0; border: 0; text-align: left; }
+  table.mini.stack .c-puesto { grid-column: 1; grid-row: 1 / span 2; font: 700 1.25rem/1 var(--display); }
+  table.mini.stack .c-jug { grid-column: 2; grid-row: 1; }
+  table.mini.stack .c-pts { grid-column: 2; grid-row: 2; color: var(--muted); font-size: .88rem; }
+  table.mini.stack .c-paga { grid-column: 3; grid-row: 1; font-weight: 700; text-align: right; }
+  table.mini.stack .c-estado { grid-column: 2 / 4; grid-row: 3; display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+  table.mini.stack .c-estado:empty { display: none; }
+  details.month > summary { padding: .9rem 1rem; }
+  details.month > summary h2 { font-size: 1.3rem; }
+  .month-body { padding: 0 1rem 1rem; }
+  .tb { padding: .8rem; }
+
+  /* Listas */
+  .list > li { gap: .6rem; }
+  .list .row { width: 100%; }
+
+  /* Ventana de detalle como hoja inferior */
+  dialog {
+    width: 100%; max-width: 100%; margin: auto 0 0; border-radius: 18px 18px 0 0; border-bottom: 0;
+    max-height: 88vh; max-height: 88dvh;
+  }
+  #modal-body { padding: 1.2rem 1.1rem calc(1.2rem + env(safe-area-inset-bottom, 0px)); }
+  .modal-actions .btn { flex: 1 1 auto; }
+  #toast { bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px)); }
+}
